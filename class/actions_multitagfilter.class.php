@@ -314,7 +314,7 @@ class ActionsmultiTagFilter
 
 				if (! empty($TSearchCategSup))
 				{
-					$this->resprints .= ' cc.fk_categorie IN (' . $this->db->escape(implode(', ', $TSearchCategSup)) . ')';
+					$this->resprints .= ' cs.fk_categorie IN (' . $this->db->escape(implode(', ', $TSearchCategSup)) . ')';
 				}
 
 				if (count($TSearchCategSup) < count($hookmanager->_search_categ_sup))
@@ -324,7 +324,7 @@ class ActionsmultiTagFilter
 						$this->resprints .= ' OR ';
 					}
 
-					$this->resprints.= 'cc.fk_categorie IS NULL';
+					$this->resprints.= 'cs.fk_categorie IS NULL';
 				}
 
 				$this->resprints.= ')';
