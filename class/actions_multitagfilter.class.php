@@ -83,6 +83,8 @@ class ActionsmultiTagFilter
 				$form = new Form($this->db);
 			}
 
+			$TModes = array('OR' => $langs->trans('or'), 'AND' => $langs->trans('and'));
+
 			if (empty($type) || $type == 'c' || $type == 'p')
 			{
 				global $search_categ_cus;
@@ -92,8 +94,13 @@ class ActionsmultiTagFilter
 
 				$customerFilter = $langs->trans('CustomersProspectsCategoriesShort').': ';
 				$customerFilter.= Form::multiselectarray('search_categ_cus', $TCategs, $hookmanager->_search_categ_cus);
+				$customerFilter.= ' ' . Form::selectarray('search_categ_cus_mode', $TModes, $hookmanager->_search_categ_cus_mode);
 
-				$TFiltersToReplace['search_categ_cus'] = array('html' => $customerFilter, 'value' => $hookmanager->_search_categ_cus);
+				$TFiltersToReplace['search_categ_cus'] = array(
+					'html' => $customerFilter
+					, 'TValues' => $hookmanager->_search_categ_cus
+					, 'mode' => $hookmanager->_search_categ_cus_mode
+				);
 			}
 
 			if (empty($type) || $type == 'f')
@@ -105,8 +112,13 @@ class ActionsmultiTagFilter
 
 				$supplierFilter = $langs->trans('SuppliersCategoriesShort').': ';
 				$supplierFilter.= Form::multiselectarray('search_categ_sup', $TCategs, $hookmanager->_search_categ_sup);
+				$supplierFilter.= ' ' . Form::selectarray('search_categ_sup_mode', $TModes, $hookmanager->_search_categ_sup_mode);
 
-				$TFiltersToReplace['search_categ_sup'] = array('html' => $supplierFilter, 'value' => $hookmanager->_search_categ_sup);
+				$TFiltersToReplace['search_categ_sup'] = array(
+					'html' => $supplierFilter
+					, 'TValues' => $hookmanager->_search_categ_sup
+					, 'mode' => $hookmanager->_search_categ_sup_mode
+				);
 			}
 
 			ob_start();
@@ -129,10 +141,12 @@ class ActionsmultiTagFilter
 				        {
 				            let newHref = oldHref;
 
-				            for (let val of TFilters[filterName]['value'])
+				            for (let val of TFilters[filterName]['TValues'])
 				            {
 				                newHref+= '&' + filterName + '[]=' + val;
                             }
+
+				            newHref+= '&' + filterName + '_mode=' + TFilters[filterName]['mode'];
 
 				            return newHref;
 				        });
@@ -210,6 +224,9 @@ class ActionsmultiTagFilter
 				}
 
 				$hookmanager->_search_categ_cus = GETPOST('search_categ_cus', 'array');
+				$hookmanager->_search_categ_cus_mode = GETPOST('search_categ_cus_mode');
+
+				if (empty($hookmanager->_search_categ_cus_mode)) $hookmanager->_search_categ_cus_mode = 'OR';
 
 				if (GETPOST('button_removefilter_x', 'alpha') || GETPOST('button_removefilter.x', 'alpha') || GETPOST('button_removefilter', 'alpha'))
 				{
@@ -229,6 +246,9 @@ class ActionsmultiTagFilter
 				}
 
 				$hookmanager->_search_categ_sup = GETPOST('search_categ_sup', 'array');
+				$hookmanager->_search_categ_sup_mode = GETPOST('search_categ_sup_mode');
+
+				if (empty($hookmanager->_search_categ_sup_mode)) $hookmanager->_search_categ_sup_mode = 'OR';
 
 				if (GETPOST('button_removefilter_x', 'alpha') || GETPOST('button_removefilter.x', 'alpha') || GETPOST('button_removefilter', 'alpha'))
 				{
@@ -262,18 +282,12 @@ class ActionsmultiTagFilter
 		{
 			$this->resprints = '';
 
-			if ((empty($type) || $type == 'c' || $type == 'p') && ! empty($hookmanager->_search_categ_cus))
+			$customerMode = $hookmanager->_search_categ_cus_mode;
+			$supplierMode = $hookmanager->_search_categ_sup_mode;
+
+			if ((empty($type) || $type == 'c' || $type == 'p') && ! empty($hookmanager->_search_categ_cus) && $customerMode == 'OR')
 			{
-				$TSearchCategCus = array_filter($hookmanager->_search_categ_cus, function($value)
-				{
-					if ($value == -2)
-					{
-						return false;
-					}
-
-					return true;
-				});
-
+				$TSearchCategCus = array_filter($hookmanager->_search_categ_cus, array($this, '_filterTagMultiselect'));
 				$TSearchCategCus = array_values($TSearchCategCus);
 
 				$this->resprints.= ' AND (';
@@ -296,18 +310,9 @@ class ActionsmultiTagFilter
 				$this->resprints.= ')';
 			}
 
-			if ((empty($type) || $type == 'f') && ! empty($hookmanager->_search_categ_sup))
+			if ((empty($type) || $type == 'f') && ! empty($hookmanager->_search_categ_sup) && $supplierMode == 'OR')
 			{
-				$TSearchCategSup = array_filter($hookmanager->_search_categ_sup, function($value)
-				{
-					if ($value == -2)
-					{
-						return false;
-					}
-
-					return true;
-				});
-
+				$TSearchCategSup = array_filter($hookmanager->_search_categ_sup, array($this, '_filterTagMultiselect'));
 				$TSearchCategSup = array_values($TSearchCategSup);
 
 				$this->resprints.= ' AND (';
@@ -330,7 +335,37 @@ class ActionsmultiTagFilter
 				$this->resprints.= ')';
 			}
 
-			$this->resprints.= ' GROUP BY s.rowid';
+			$this->resprints.= ' GROUP BY s.rowid HAVING TRUE';
+
+			if ((empty($type) || $type == 'c' || $type == 'p') && ! empty($hookmanager->_search_categ_cus) && $customerMode == 'AND')
+			{
+				$TSearchCategCus = array_filter($hookmanager->_search_categ_cus, array($this, '_filterTagMultiselect'));
+				$TSearchCategCus = array_values($TSearchCategCus);
+
+				if (! empty($TSearchCategCus))
+				{
+					foreach ($TSearchCategCus as $value)
+					{
+						$this->resprints.= ' AND GROUP_CONCAT(cc.fk_categorie SEPARATOR ",") REGEXP("(^|,)' . $this->db->escape($value) . '(,|$)")';
+					}
+				}
+			}
+
+
+			if ((empty($type) || $type == 'f') && ! empty($hookmanager->_search_categ_sup) && $supplierMode == 'AND')
+			{
+				$TSearchCategSup = array_filter($hookmanager->_search_categ_sup, array($this, '_filterTagMultiselect'));
+				$TSearchCategSup = array_values($TSearchCategSup);
+
+				if (! empty($TSearchCategSup))
+				{
+					foreach ($TSearchCategSup as $value)
+					{
+						$this->resprints.= ' AND GROUP_CONCAT(cs.fk_categorie SEPARATOR ",") REGEXP("(^|,)' . $this->db->escape($value) . '(,|$)")';
+					}
+				}
+			}
+
 
 			global $search_categ_cus, $search_categ_sup;
 
@@ -339,5 +374,11 @@ class ActionsmultiTagFilter
 		}
 
 		return 0;
+	}
+
+
+	private function _filterTagMultiselect($value)
+	{
+		return $value != -2;
 	}
 }
