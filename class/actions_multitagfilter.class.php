@@ -69,7 +69,7 @@ class ActionsmultiTagFilter
 	{
 		global $conf, $form, $langs;
 
-		$type = $parameters['type']; // Type de liste : vide => tous tiers confondus, p => prospects, c => clientrs, f => fournisseurs
+		$type = $parameters['type']; // Type de liste : vide => tous tiers confondus, p => prospects, c => clients, f => fournisseurs
 		$TContexts = explode(':', $parameters['context']);
 
 		if (in_array('thirdpartylist', $TContexts) && ! empty($conf->categorie->enabled))
@@ -91,9 +91,9 @@ class ActionsmultiTagFilter
 				$TCategs[-2] = $langs->trans('NotCategorized');
 
 				$customerFilter = $langs->trans('CustomersProspectsCategoriesShort').': ';
-				$customerFilter.= Form::multiselectarray('search_categ_cus', $TCategs, $search_categ_cus);
+				$customerFilter.= Form::multiselectarray('search_categ_cus', $TCategs, $hookmanager->_search_categ_cus);
 
-				$TFiltersToReplace['search_categ_cus'] = $customerFilter;
+				$TFiltersToReplace['search_categ_cus'] = array('html' => $customerFilter, 'value' => $hookmanager->_search_categ_cus);
 			}
 
 			if (empty($type) || $type == 'f')
@@ -103,10 +103,10 @@ class ActionsmultiTagFilter
 				$TCategs = $form->select_all_categories(Categorie::TYPE_SUPPLIER, null, 'parent', null, null, 1);
 				$TCategs[-2] = $langs->trans('NotCategorized');
 
-				$supplierFilter = $langs->trans('CustomersProspectsCategoriesShort').': ';
-				$supplierFilter.= Form::multiselectarray('search_categ_sup', $TCategs, $search_categ_sup);
+				$supplierFilter = $langs->trans('SuppliersCategoriesShort').': ';
+				$supplierFilter.= Form::multiselectarray('search_categ_sup', $TCategs, $hookmanager->_search_categ_sup);
 
-				$TFiltersToReplace['search_categ_sup'] = $supplierFilter;
+				$TFiltersToReplace['search_categ_sup'] = array('html' => $supplierFilter, 'value' => $hookmanager->_search_categ_sup);
 			}
 
 			ob_start();
@@ -116,19 +116,67 @@ class ActionsmultiTagFilter
 				{
 				    let TFilters = <?php echo json_encode($TFiltersToReplace); ?>;
 
-				    for(filterName in TFilters)
+				    for (let filterName in TFilters)
 				    {
 				        let parent = $('[name=' + filterName + ']').parent('.divsearchfield');
 
-				        if(parent.length > 0)
+				        if (parent.length > 0)
 				        {
-				            parent.html(TFilters[filterName]);
+				            parent.html(TFilters[filterName]['html']);
 				        }
+
+				        $('a[href*="&sortorder="]').prop('href', function(i, oldHref)
+				        {
+				            let newHref = oldHref;
+
+				            for (let val of TFilters[filterName]['value'])
+				            {
+				                newHref+= '&' + filterName + '[]=' + val;
+                            }
+
+				            return newHref;
+				        });
 				    }
 				});
 			</script>
 <?php
 			$this->resprints = ob_get_clean();
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Overloading the printFieldListSelect function : replacing the parent's function with the one below
+	 *
+	 * @param   array()         $parameters     Hook metadatas (context, etc...)
+	 * @param   CommonObject    $object        The object to process (an invoice if you are in invoice module, a propale in propale's module, etc...)
+	 * @param   string          $action        Current action (if set). Generally create or edit or null
+	 * @param   HookManager     $hookmanager    Hook manager propagated to allow calling another hook
+	 * @return  int                             < 0 on error, 0 on success, 1 to replace standard code
+	 */
+	public function printFieldListSelect($parameters, &$object, &$action, $hookmanager)
+	{
+		global $conf, $form, $langs;
+
+		$type = $parameters['type']; // Type de liste : vide => tous tiers confondus, p => prospects, c => clients, f => fournisseurs
+		$TContexts = explode(':', $parameters['context']);
+
+		if (in_array('thirdpartylist', $TContexts) && ! empty($conf->categorie->enabled) && empty($action))
+		{
+			if (empty($type) || $type == 'c' || $type == 'p')
+			{
+				global $search_categ_cus;
+
+				$search_categ_cus = -1; // -1 permet de faire les bonnes jointures mais désactive le filtrage standard
+			}
+
+			if (empty($type) || $type == 'f')
+			{
+				global $search_categ_sup;
+
+				$search_categ_sup = -1; // -1 permet de faire les bonnes jointures mais désactive le filtrage standard
+			}
 		}
 
 		return 0;
@@ -145,14 +193,149 @@ class ActionsmultiTagFilter
 	 */
 	public function doActions($parameters, &$object, &$action, $hookmanager)
 	{
-		global $conf;
+		global $conf, $form, $langs;
 
-		$type = $parameters['type'];
+		$type = $parameters['type']; // Type de liste : vide => tous tiers confondus, p => prospects, c => clients, f => fournisseurs
 		$TContexts = explode(':', $parameters['context']);
 
-		if (in_array('thirdpartylist', $TContexts) && ! empty($conf->categorie->enabled))
+		if (in_array('thirdpartylist', $TContexts) && ! empty($conf->categorie->enabled) && empty($action))
 		{
+			if (empty($type) || $type == 'c' || $type == 'p')
+			{
+				global $search_categ_cus;
 
+				if(! is_array($_REQUEST['search_categ_cus']))
+				{
+					$_REQUEST['search_categ_cus'] = unserialize(GETPOST('search_categ_cus'));
+				}
+
+				$hookmanager->_search_categ_cus = GETPOST('search_categ_cus', 'array');
+
+				if (GETPOST('button_removefilter_x', 'alpha') || GETPOST('button_removefilter.x', 'alpha') || GETPOST('button_removefilter', 'alpha'))
+				{
+					$hookmanager->_search_categ_cus = array();
+				}
+
+				$search_categ_cus = 0; // 0 permet de ne pas sélectionner les champs dans la requête
+			}
+
+			if (empty($type) || $type == 'f')
+			{
+				global $search_categ_sup;
+
+				if(! is_array($_REQUEST['search_categ_sup']))
+				{
+					$_REQUEST['search_categ_sup'] = unserialize(GETPOST('search_categ_sup'));
+				}
+
+				$hookmanager->_search_categ_sup = GETPOST('search_categ_sup', 'array');
+
+				if (GETPOST('button_removefilter_x', 'alpha') || GETPOST('button_removefilter.x', 'alpha') || GETPOST('button_removefilter', 'alpha'))
+				{
+					$hookmanager->_search_categ_sup = array();
+				}
+
+				$search_categ_sup = 0; // 0 permet de ne pas sélectionner les champs dans la requête
+			}
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Overloading the printFieldListWhere function : replacing the parent's function with the one below
+	 *
+	 * @param   array()         $parameters     Hook metadatas (context, etc...)
+	 * @param   CommonObject    $object        The object to process (an invoice if you are in invoice module, a propale in propale's module, etc...)
+	 * @param   string          $action        Current action (if set). Generally create or edit or null
+	 * @param   HookManager     $hookmanager    Hook manager propagated to allow calling another hook
+	 * @return  int                             < 0 on error, 0 on success, 1 to replace standard code
+	 */
+	public function printFieldListWhere($parameters, &$object, &$action, $hookmanager)
+	{
+		global $conf, $form, $langs;
+
+		$type = $parameters['type']; // Type de liste : vide => tous tiers confondus, p => prospects, c => clients, f => fournisseurs
+		$TContexts = explode(':', $parameters['context']);
+
+		if (in_array('thirdpartylist', $TContexts) && ! empty($conf->categorie->enabled) && empty($action))
+		{
+			$this->resprints = '';
+
+			if ((empty($type) || $type == 'c' || $type == 'p') && ! empty($hookmanager->_search_categ_cus))
+			{
+				$TSearchCategCus = array_filter($hookmanager->_search_categ_cus, function($value)
+				{
+					if ($value == -2)
+					{
+						return false;
+					}
+
+					return true;
+				});
+
+				$TSearchCategCus = array_values($TSearchCategCus);
+
+				$this->resprints.= ' AND (';
+
+				if (! empty($TSearchCategCus))
+				{
+					$this->resprints .= 'cc.fk_categorie IN (' . $this->db->escape(implode(', ', $TSearchCategCus)) . ')';
+				}
+
+				if (count($TSearchCategCus) < count($hookmanager->_search_categ_cus))
+				{
+					if (! empty($TSearchCategCus))
+					{
+						$this->resprints .= ' OR ';
+					}
+
+					$this->resprints.= 'cc.fk_categorie IS NULL';
+				}
+
+				$this->resprints.= ')';
+			}
+
+			if ((empty($type) || $type == 'f') && ! empty($hookmanager->_search_categ_sup))
+			{
+				$TSearchCategSup = array_filter($hookmanager->_search_categ_sup, function($value)
+				{
+					if ($value == -2)
+					{
+						return false;
+					}
+
+					return true;
+				});
+
+				$TSearchCategSup = array_values($TSearchCategSup);
+
+				$this->resprints.= ' AND (';
+
+				if (! empty($TSearchCategSup))
+				{
+					$this->resprints .= ' cc.fk_categorie IN (' . $this->db->escape(implode(', ', $TSearchCategSup)) . ')';
+				}
+
+				if (count($TSearchCategSup) < count($hookmanager->_search_categ_sup))
+				{
+					if (! empty($TSearchCategSup))
+					{
+						$this->resprints .= ' OR ';
+					}
+
+					$this->resprints.= 'cc.fk_categorie IS NULL';
+				}
+
+				$this->resprints.= ')';
+			}
+
+			$this->resprints.= ' GROUP BY s.rowid';
+
+			global $search_categ_cus, $search_categ_sup;
+
+			$search_categ_cus = serialize($hookmanager->_search_categ_cus);
+			$search_categ_sup = serialize($hookmanager->_search_categ_sup);
 		}
 
 		return 0;
